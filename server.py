@@ -110,19 +110,19 @@ def fetch_spotify(tags, mood):
         return []
 
     query = build_query(tags, mood)
-    params = urllib.parse.urlencode({
+    items = []
+    track_params = urllib.parse.urlencode({
         "q": query,
-        "type": "track,show",
+        "type": "track",
         "limit": 3,
         "market": "IN",
     })
-    payload = http_get_json(
-        f"https://api.spotify.com/v1/search?{params}",
+    track_payload = http_get_json(
+        f"https://api.spotify.com/v1/search?{track_params}",
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    items = []
-    for track in payload.get("tracks", {}).get("items", []):
+    for track in track_payload.get("tracks", {}).get("items", []):
         title = track.get("name")
         url = track.get("external_urls", {}).get("spotify")
         artist_names = ", ".join(artist.get("name", "") for artist in track.get("artists", []))
@@ -139,22 +139,36 @@ def fetch_spotify(tags, mood):
             "moods": infer_moods_from_tags(raw_tags, mood),
         })
 
-    for show in payload.get("shows", {}).get("items", []):
-        title = show.get("name")
-        url = show.get("external_urls", {}).get("spotify")
-        publisher = show.get("publisher", "")
-        if not title or not url:
-            continue
-        raw_tags = [mood, "podcast", "spotify"] + query.split()
-        items.append({
-            "title": title,
-            "domain": "Podcast",
-            "platform": "Spotify",
-            "url": url,
-            "description": show.get("description") or f"Podcast show published by {publisher}.",
-            "tags": sorted({tag.lower() for tag in raw_tags}),
-            "moods": infer_moods_from_tags(raw_tags, mood),
-        })
+    show_params = urllib.parse.urlencode({
+        "q": query,
+        "type": "show",
+        "limit": 3,
+        "market": "US",
+    })
+    try:
+        show_payload = http_get_json(
+            f"https://api.spotify.com/v1/search?{show_params}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        for show in show_payload.get("shows", {}).get("items", []):
+            title = show.get("name")
+            url = show.get("external_urls", {}).get("spotify")
+            publisher = show.get("publisher", "")
+            if not title or not url:
+                continue
+            raw_tags = [mood, "podcast", "spotify"] + query.split()
+            items.append({
+                "title": title,
+                "domain": "Podcast",
+                "platform": "Spotify",
+                "url": url,
+                "description": show.get("description") or f"Podcast show published by {publisher}.",
+                "tags": sorted({tag.lower() for tag in raw_tags}),
+                "moods": infer_moods_from_tags(raw_tags, mood),
+            })
+    except Exception:
+        pass
+
     return items
 
 
