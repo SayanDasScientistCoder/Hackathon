@@ -46,6 +46,10 @@
 
         <div class="controls">
           <label class="control">
+            <span>User profile</span>
+            <select id="profileSelect"></select>
+          </label>
+          <label class="control">
             <span>Mood</span>
             <select id="moodSelect"></select>
           </label>
@@ -57,6 +61,15 @@
               <option value="adventurous">Explore new formats</option>
             </select>
           </label>
+        </div>
+
+        <div class="profile-card">
+          <p class="picker-title">Active profile signals</p>
+          <div class="profile-actions">
+            <button id="connectGoogleBtn" class="ghost-btn" type="button">Connect Google / YouTube</button>
+            <span id="profileImportStatus" class="profile-import-status">Using local profile presets.</span>
+          </div>
+          <div id="profileSignals" class="chip-grid"></div>
         </div>
 
         <div class="picker-block">

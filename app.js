@@ -139,18 +139,55 @@ const fallbackCatalogue = [
 const moodOptions = ["curious", "focused", "energetic", "calm", "reflective", "hopeful", "intense", "serious"];
 const domainOptions = [...new Set(fallbackCatalogue.map((item) => item.domain))];
 const tagOptions = [...new Set(fallbackCatalogue.flatMap((item) => item.tags))].sort();
+const profileLibrary = {
+  builder: {
+    label: "Aarav • AI builder",
+    bio: "Builds side projects at night, follows AI launches, prefers explainers and practical deep dives.",
+    moodBias: "focused",
+    preferredDomains: ["Video", "Podcast", "News", "Movie"],
+    favoriteTags: ["ai", "technology", "science", "future", "analysis", "education"],
+    preferredPlatforms: ["YouTube", "Spotify", "The Verge", "Wired", "TMDB", "Netflix"],
+    avoidedTags: ["lifestyle"],
+    crossDomainWeight: 1.1
+  },
+  explorer: {
+    label: "Mira • Culture explorer",
+    bio: "Moves fluidly between music, cinema, and thoughtful essays with a taste for discovery.",
+    moodBias: "reflective",
+    preferredDomains: ["Movie", "Music", "Video", "News"],
+    favoriteTags: ["cinematic", "creative", "emotional", "future", "space", "music"],
+    preferredPlatforms: ["Spotify", "YouTube", "Prime Video", "TMDB", "BBC"],
+    avoidedTags: ["business"],
+    crossDomainWeight: 1.25
+  },
+  reset: {
+    label: "Neel • Wellness learner",
+    bio: "Looks for calm, science-backed content across wellness, routines, and mindful listening.",
+    moodBias: "calm",
+    preferredDomains: ["Podcast", "Music", "News", "Video"],
+    favoriteTags: ["wellness", "health", "science", "habits", "calm", "peaceful"],
+    preferredPlatforms: ["Spotify", "YouTube Music", "BBC", "Medium"],
+    avoidedTags: ["thriller"],
+    crossDomainWeight: 1.05
+  }
+};
 
 const state = {
+  profileId: "builder",
   mood: "curious",
   discovery: "balanced",
   selectedDomains: new Set(["Movie", "Music", "Podcast", "Video", "News"]),
   selectedTags: new Set(["ai", "technology", "science", "cinematic"])
 };
 
+const profileSelect = document.getElementById("profileSelect");
 const moodSelect = document.getElementById("moodSelect");
 const discoverySelect = document.getElementById("discoverySelect");
 const domainChips = document.getElementById("domainChips");
 const tagChips = document.getElementById("tagChips");
+const profileSignals = document.getElementById("profileSignals");
+const connectGoogleBtn = document.getElementById("connectGoogleBtn");
+const profileImportStatus = document.getElementById("profileImportStatus");
 const results = document.getElementById("results");
 const resultTemplate = document.getElementById("resultTemplate");
 const profileSummary = document.getElementById("profileSummary");
@@ -160,12 +197,29 @@ const modeLabel = document.getElementById("modeLabel");
 const apiStatus = document.getElementById("apiStatus");
 
 let liveCatalogue = [...fallbackCatalogue];
+let importedProfileAvailable = false;
 
 function titleCase(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function getActiveProfile() {
+  return profileLibrary[state.profileId];
+}
+
 function renderSelects() {
+  profileSelect.innerHTML = "";
+  moodSelect.innerHTML = "";
+  Object.entries(profileLibrary).forEach(([id, profile]) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = profile.label;
+    if (id === state.profileId) {
+      option.selected = true;
+    }
+    profileSelect.appendChild(option);
+  });
+
   moodOptions.forEach((mood) => {
     const option = document.createElement("option");
     option.value = mood;
@@ -175,6 +229,29 @@ function renderSelects() {
     }
     moodSelect.appendChild(option);
   });
+}
+
+function ensureImportedProfile(profile) {
+  profileLibrary.youtube_import = {
+    label: profile.label || "Imported YouTube profile",
+    bio: profile.bio || "Built from the signed-in user's YouTube subscriptions and channel metadata.",
+    moodBias: profile.moodBias || "curious",
+    preferredDomains: profile.preferredDomains || ["Video", "Podcast", "News", "Movie"],
+    favoriteTags: profile.favoriteTags || ["technology", "education", "analysis"],
+    preferredPlatforms: profile.preferredPlatforms || ["YouTube", "Spotify", "TMDB"],
+    avoidedTags: profile.avoidedTags || [],
+    crossDomainWeight: profile.crossDomainWeight || 1.18
+  };
+  importedProfileAvailable = true;
+  renderSelects();
+}
+
+function syncStateFromProfile() {
+  const profile = getActiveProfile();
+  state.mood = profile.moodBias;
+  state.selectedDomains = new Set(profile.preferredDomains);
+  state.selectedTags = new Set(profile.favoriteTags.slice(0, 6));
+  moodSelect.value = state.mood;
 }
 
 function createChip(label, selected, onClick) {
@@ -222,30 +299,67 @@ function renderChips() {
   });
 }
 
+function renderProfileSignals() {
+  const profile = getActiveProfile();
+  profileSignals.innerHTML = "";
+  [
+    `Bias: ${profile.moodBias}`,
+    ...profile.preferredDomains.slice(0, 3),
+    ...profile.favoriteTags.slice(0, 4),
+    ...profile.preferredPlatforms.slice(0, 2)
+  ].forEach((signal) => {
+    const span = document.createElement("span");
+    span.className = "mini-tag";
+    span.textContent = signal;
+    profileSignals.appendChild(span);
+  });
+}
+
 function scoreItem(item) {
-  let score = 0;
+  const profile = getActiveProfile();
+  let score = 10;
   const matchedTags = item.tags.filter((tag) => state.selectedTags.has(tag));
+  const profileTagMatches = item.tags.filter((tag) => profile.favoriteTags.includes(tag));
   const moodMatch = item.moods.includes(state.mood);
   const domainMatch = state.selectedDomains.has(item.domain);
+  const platformMatch = profile.preferredPlatforms.includes(item.platform);
+  const profileDomainMatch = profile.preferredDomains.includes(item.domain);
+  const avoidedTagHit = item.tags.some((tag) => profile.avoidedTags.includes(tag));
+  const descriptionTokens = `${item.title} ${item.description}`.toLowerCase();
+  const profileConceptMatches = profile.favoriteTags.filter((tag) => descriptionTokens.includes(tag)).length;
 
   if (domainMatch) {
-    score += 25;
+    score += 18;
+  }
+
+  if (profileDomainMatch) {
+    score += 16;
   }
 
   if (moodMatch) {
-    score += 22;
+    score += 14;
   }
 
-  score += matchedTags.length * 12;
+  score += matchedTags.length * 8;
+  score += profileTagMatches.length * 10;
+  score += profileConceptMatches * 5;
+
+  if (platformMatch) {
+    score += 10;
+  }
+
+  if (avoidedTagHit) {
+    score -= 18;
+  }
 
   if (state.discovery === "familiar") {
-    score += domainMatch ? 10 : -12;
+    score += profileDomainMatch ? 12 : -10;
   }
 
   if (state.discovery === "adventurous") {
-    score += domainMatch ? -4 : 14;
-    if (item.domain === "Podcast" || item.domain === "News") {
-      score += 6;
+    score += profileDomainMatch ? -5 : Math.round(12 * profile.crossDomainWeight);
+    if (item.domain !== profile.preferredDomains[0]) {
+      score += 4;
     }
   }
 
@@ -257,13 +371,22 @@ function scoreItem(item) {
     score += 4;
   }
 
-  const confidence = Math.min(98, Math.max(52, score));
+  const confidence = Math.min(98, Math.max(54, Math.round(score)));
   const reasonParts = [];
-  if (matchedTags.length) {
-    reasonParts.push(`${matchedTags.length} tag match${matchedTags.length > 1 ? "es" : ""}`);
+  if (profileTagMatches.length) {
+    reasonParts.push(`${profileTagMatches.length} profile interest match${profileTagMatches.length > 1 ? "es" : ""}`);
+  }
+  if (platformMatch) {
+    reasonParts.push("preferred platform");
+  }
+  if (profileDomainMatch) {
+    reasonParts.push("profile format fit");
+  }
+  if (matchedTags.length && !profileTagMatches.length) {
+    reasonParts.push(`${matchedTags.length} active filter match${matchedTags.length > 1 ? "es" : ""}`);
   }
   if (moodMatch) {
-    reasonParts.push(`${state.mood} mood fit`);
+    reasonParts.push(`${state.mood} profile mood`);
   }
   if (!domainMatch && state.discovery === "adventurous") {
     reasonParts.push("cross-domain stretch");
@@ -316,16 +439,47 @@ function renderResults() {
 function updateSummary() {
   const tags = [...state.selectedTags];
   const domains = [...state.selectedDomains];
+  const profile = getActiveProfile();
   profileSummary.innerHTML = `
-    <strong>${titleCase(state.mood)}</strong> mood selected with
+    <strong>${profile.label}</strong> is active.
+    ${profile.bio}
+    The current profile leans <strong>${titleCase(state.mood)}</strong> with
     <strong>${titleCase(state.discovery)}</strong> discovery mode.
-    The engine is prioritizing <strong>${domains.join(", ")}</strong>
-    and using metadata cues such as <strong>${tags.slice(0, 6).join(", ") || "general relevance"}</strong>
-    to rank results across formats.
+    Recommendations prioritize <strong>${domains.join(", ")}</strong>,
+    favorite themes like <strong>${profile.favoriteTags.slice(0, 5).join(", ")}</strong>,
+    and platforms such as <strong>${profile.preferredPlatforms.slice(0, 3).join(", ")}</strong>.
+    Active session tags still refine ranking through <strong>${tags.slice(0, 6).join(", ") || "general relevance"}</strong>.
   `;
   itemCount.textContent = String(liveCatalogue.length);
   domainCount.textContent = String(domainOptions.length);
   modeLabel.textContent = discoverySelect.options[discoverySelect.selectedIndex].textContent;
+}
+
+async function fetchImportedProfile() {
+  try {
+    const response = await fetch("/api/profile");
+    if (!response.ok) {
+      throw new Error(`Profile request failed with ${response.status}`);
+    }
+    const payload = await response.json();
+    if (payload.connected && payload.profile) {
+      ensureImportedProfile(payload.profile);
+      profileImportStatus.textContent = `Connected to Google/YouTube as ${payload.profile.label}.`;
+      connectGoogleBtn.textContent = "Refresh imported profile";
+      state.profileId = "youtube_import";
+      profileSelect.value = state.profileId;
+      syncStateFromProfile();
+      renderChips();
+      renderProfileSignals();
+      return;
+    }
+
+    profileImportStatus.textContent = payload.configured
+      ? "Connect Google / YouTube to import subscription-based interests."
+      : "Add Google OAuth credentials in .env to enable YouTube profile import.";
+  } catch (error) {
+    profileImportStatus.textContent = "Could not load imported profile. Using local profile presets.";
+  }
 }
 
 function setApiStatus(message, tone = "info") {
@@ -389,6 +543,8 @@ async function updateRecommendations() {
 }
 
 function surpriseMe() {
+  const profileIds = Object.keys(profileLibrary);
+  state.profileId = profileIds[Math.floor(Math.random() * profileIds.length)];
   state.mood = moodOptions[Math.floor(Math.random() * moodOptions.length)];
   state.discovery = ["balanced", "familiar", "adventurous"][Math.floor(Math.random() * 3)];
   state.selectedDomains = new Set(domainOptions.filter(() => Math.random() > 0.35));
@@ -400,16 +556,28 @@ function surpriseMe() {
     state.selectedTags.add(tagOptions[Math.floor(Math.random() * tagOptions.length)]);
   }
 
+  profileSelect.value = state.profileId;
   moodSelect.value = state.mood;
   discoverySelect.value = state.discovery;
   renderChips();
+  renderProfileSignals();
   updateRecommendations();
 }
 
+profileSelect.addEventListener("change", (event) => {
+  state.profileId = event.target.value;
+  syncStateFromProfile();
+  renderProfileSignals();
+  renderChips();
+  updateRecommendations();
+});
 document.getElementById("recommendBtn").addEventListener("click", () => {
   updateRecommendations();
 });
 document.getElementById("surpriseBtn").addEventListener("click", surpriseMe);
+connectGoogleBtn.addEventListener("click", () => {
+  window.location.href = "/auth/google/start";
+});
 moodSelect.addEventListener("change", (event) => {
   state.mood = event.target.value;
   updateSummary();
@@ -420,5 +588,9 @@ discoverySelect.addEventListener("change", (event) => {
 });
 
 renderSelects();
+syncStateFromProfile();
 renderChips();
-updateRecommendations();
+renderProfileSignals();
+fetchImportedProfile().finally(() => {
+  updateRecommendations();
+});

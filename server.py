@@ -1,13 +1,23 @@
 import base64
 import json
 import os
+import re
+import secrets
 import urllib.parse
 import urllib.request
+from http import cookies
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent
+SESSION_STORE = {}
+OAUTH_STATES = {}
+STOPWORDS = {
+    "the", "and", "for", "with", "from", "that", "this", "your", "into", "are", "how", "what",
+    "about", "have", "will", "you", "our", "their", "they", "them", "more", "than", "just",
+    "used", "using", "video", "videos", "channel", "channels", "podcast", "official"
+}
 
 
 def load_env_file():
@@ -32,6 +42,23 @@ def http_get_json(url, headers=None, data=None):
         return json.loads(response.read().decode("utf-8"))
 
 
+def tokenize_text(*chunks):
+    tokens = []
+    for chunk in chunks:
+        for token in re.findall(r"[a-zA-Z][a-zA-Z0-9\-]{2,}", (chunk or "").lower()):
+            if token not in STOPWORDS:
+                tokens.append(token)
+    return tokens
+
+
+def top_terms(tokens, limit=8):
+    counts = {}
+    for token in tokens:
+        counts[token] = counts.get(token, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [token for token, _ in ranked[:limit]]
+
+
 def infer_moods_from_tags(tags, requested_mood):
     lowered = {tag.lower() for tag in tags}
     moods = {requested_mood}
@@ -49,6 +76,80 @@ def infer_moods_from_tags(tags, requested_mood):
 def build_query(tags, mood):
     top_tags = [tag for tag in tags if tag][:3]
     return " ".join(top_tags or [mood, "recommended"])
+
+
+def google_oauth_configured():
+    return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
+
+
+def build_google_redirect_uri():
+    return os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+
+
+def exchange_google_code(code):
+    data = urllib.parse.urlencode({
+        "code": code,
+        "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+        "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+        "redirect_uri": build_google_redirect_uri(),
+        "grant_type": "authorization_code",
+    }).encode("utf-8")
+    return http_get_json(
+        "https://oauth2.googleapis.com/token",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        data=data,
+    )
+
+
+def fetch_google_userinfo(access_token):
+    return http_get_json(
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+
+def fetch_youtube_imported_profile(access_token, userinfo):
+    channel_payload = http_get_json(
+        "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    subscription_payload = http_get_json(
+        "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=25",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    tokens = []
+    for item in channel_payload.get("items", []):
+        snippet = item.get("snippet", {})
+        tokens.extend(tokenize_text(snippet.get("title"), snippet.get("description")))
+    for item in subscription_payload.get("items", []):
+        snippet = item.get("snippet", {})
+        tokens.extend(tokenize_text(snippet.get("title"), snippet.get("description")))
+
+    favorite_tags = top_terms(tokens, limit=8) or ["technology", "education", "analysis"]
+    preferred_domains = ["Video", "Podcast", "News", "Movie"]
+    token_set = set(favorite_tags)
+    if {"music", "concert", "audio", "songs"} & token_set:
+        preferred_domains = ["Video", "Music", "Podcast", "News"]
+
+    mood_bias = "curious"
+    if {"calm", "wellness", "health", "sleep"} & token_set:
+        mood_bias = "calm"
+    elif {"analysis", "finance", "business"} & token_set:
+        mood_bias = "focused"
+    elif {"film", "cinematic", "space"} & token_set:
+        mood_bias = "reflective"
+
+    return {
+        "label": f"{userinfo.get('name', 'Signed-in user')} • YouTube import",
+        "bio": "Imported from Google sign-in and YouTube subscriptions. Interests are inferred from subscribed channel metadata.",
+        "moodBias": mood_bias,
+        "preferredDomains": preferred_domains,
+        "favoriteTags": favorite_tags,
+        "preferredPlatforms": ["YouTube", "Spotify", "TMDB", "BBC", "The Verge"],
+        "avoidedTags": [],
+        "crossDomainWeight": 1.18,
+    }
 
 
 def fetch_youtube(tags, mood):
@@ -260,10 +361,91 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/auth/google/start":
+            self.handle_google_start()
+            return
+        if parsed.path == "/auth/google/callback":
+            self.handle_google_callback(parsed.query)
+            return
+        if parsed.path == "/api/profile":
+            self.handle_profile()
+            return
         if parsed.path == "/api/recommendations":
             self.handle_recommendations(parsed.query)
             return
         super().do_GET()
+
+    def get_session_id(self):
+        jar = cookies.SimpleCookie()
+        jar.load(self.headers.get("Cookie", ""))
+        if "streamsphere_session" in jar:
+            return jar["streamsphere_session"].value
+        return None
+
+    def get_session(self):
+        session_id = self.get_session_id()
+        if not session_id:
+            return None
+        return SESSION_STORE.get(session_id)
+
+    def redirect(self, location, set_cookie=None):
+        self.send_response(302)
+        self.send_header("Location", location)
+        if set_cookie:
+            self.send_header("Set-Cookie", set_cookie)
+        self.end_headers()
+
+    def handle_google_start(self):
+        if not google_oauth_configured():
+            self.redirect("/")
+            return
+
+        state = secrets.token_urlsafe(24)
+        OAUTH_STATES[state] = True
+        params = urllib.parse.urlencode({
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "redirect_uri": build_google_redirect_uri(),
+            "response_type": "code",
+            "scope": "openid profile email https://www.googleapis.com/auth/youtube.readonly",
+            "access_type": "offline",
+            "include_granted_scopes": "true",
+            "prompt": "consent",
+            "state": state,
+        })
+        self.redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+    def handle_google_callback(self, query_string):
+        params = urllib.parse.parse_qs(query_string)
+        state = params.get("state", [""])[0]
+        code = params.get("code", [""])[0]
+        if not code or state not in OAUTH_STATES:
+            self.redirect("/")
+            return
+
+        OAUTH_STATES.pop(state, None)
+        try:
+            token_payload = exchange_google_code(code)
+            access_token = token_payload.get("access_token")
+            userinfo = fetch_google_userinfo(access_token)
+            profile = fetch_youtube_imported_profile(access_token, userinfo)
+            session_id = secrets.token_urlsafe(24)
+            SESSION_STORE[session_id] = {"profile": profile, "userinfo": userinfo}
+            self.redirect("/", set_cookie=f"streamsphere_session={session_id}; Path=/; HttpOnly; SameSite=Lax")
+        except Exception:
+            self.redirect("/")
+
+    def handle_profile(self):
+        session = self.get_session()
+        body = json.dumps({
+            "configured": google_oauth_configured(),
+            "connected": bool(session and session.get("profile")),
+            "profile": session.get("profile") if session else None,
+        }).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def handle_recommendations(self, query_string):
         params = urllib.parse.parse_qs(query_string)

@@ -49,6 +49,8 @@ If API keys are missing or an API fails, the UI falls back to the seeded catalog
 - `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` - needed for Spotify client credentials flow
 - `NEWS_API_KEY` - NewsAPI key
 - `TMDB_API_KEY` - TMDB API Read Access Token
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` - for Google OAuth sign-in
+- `GOOGLE_REDIRECT_URI` - should match your Google OAuth callback URL
 
 ## Current live sources
 
@@ -57,6 +59,17 @@ If API keys are missing or an API fails, the UI falls back to the seeded catalog
 - Spotify track results are normalized as `Music`
 - Spotify show results are normalized as `Podcast`
 - NewsAPI article results are normalized as `News`
+
+## Google / YouTube profile import
+
+The app can import a user recommendation profile from Google/YouTube:
+
+1. Create a Google OAuth web application
+2. Add `http://localhost:8000/auth/google/callback` as an authorized redirect URI
+3. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in `.env`
+4. Start the backend and click `Connect Google / YouTube`
+
+After sign-in, the backend reads the authenticated user's YouTube subscriptions and channel metadata using `youtube.readonly`, derives interest tags, and uses that imported profile to rank recommendations across domains.
 
 ## Official API notes
 
