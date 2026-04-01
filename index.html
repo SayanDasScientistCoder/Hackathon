@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreamSphere | Cross-Domain Recommender</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Topic 3 • Combined Recommendation System</p>
+        <h1>One interface for movies, music, podcasts, videos, and news.</h1>
+        <p class="hero-text">
+          StreamSphere aggregates metadata from multiple domains, learns from user taste signals,
+          and recommends the next best thing to watch, hear, or read without hosting the content itself.
+        </p>
+      </div>
+      <aside class="hero-card">
+        <p class="card-label">How this product works</p>
+        <ul>
+          <li>Aggregates content metadata</li>
+          <li>Builds cross-format preference profiles</li>
+          <li>Ranks recommendations by similarity and intent</li>
+          <li>Redirects users to the original source platform</li>
+        </ul>
+      </aside>
+    </header>
+
+    <main class="dashboard">
+      <section class="panel taste-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-kicker">Step 1</p>
+            <h2>Set your taste profile</h2>
+          </div>
+          <p class="panel-note">Choose mood, domains, and topics. The engine scores metadata only.</p>
+        </div>
+
+        <div class="controls">
+          <label class="control">
+            <span>Mood</span>
+            <select id="moodSelect"></select>
+          </label>
+          <label class="control">
+            <span>Discovery mode</span>
+            <select id="discoverySelect">
+              <option value="balanced">Balanced mix</option>
+              <option value="familiar">Stay familiar</option>
+              <option value="adventurous">Explore new formats</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="picker-block">
+          <p class="picker-title">Preferred formats</p>
+          <div id="domainChips" class="chip-grid"></div>
+        </div>
+
+        <div class="picker-block">
+          <p class="picker-title">Interest tags</p>
+          <div id="tagChips" class="chip-grid"></div>
+        </div>
+
+        <div class="actions">
+          <button id="recommendBtn" class="primary-btn">Generate recommendations</button>
+          <button id="surpriseBtn" class="ghost-btn">Surprise me</button>
+        </div>
+      </section>
+
+      <section class="panel insight-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-kicker">Step 2</p>
+            <h2>Your recommendation brief</h2>
+          </div>
+        </div>
+        <div id="profileSummary" class="summary-card"></div>
+        <div class="stats-row">
+          <div class="stat">
+            <span class="stat-label">Items indexed</span>
+            <strong id="itemCount">0</strong>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Domains covered</span>
+            <strong id="domainCount">0</strong>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Recommendation style</span>
+            <strong id="modeLabel">Balanced mix</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel results-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-kicker">Step 3</p>
+            <h2>Recommended for you</h2>
+          </div>
+          <p class="panel-note">Every card links to the original platform.</p>
+        </div>
+        <div id="results" class="results-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <template id="resultTemplate">
+    <article class="result-card">
+      <div class="result-topline">
+        <span class="domain-pill"></span>
+        <span class="platform-name"></span>
+      </div>
+      <h3></h3>
+      <p class="description"></p>
+      <div class="tag-row"></div>
+      <div class="score-row">
+        <span class="score-label"></span>
+        <span class="reason"></span>
+      </div>
+      <a class="open-link" target="_blank" rel="noreferrer">Open on source</a>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
