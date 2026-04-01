@@ -1,4 +1,4 @@
-const catalogue = [
+const fallbackCatalogue = [
   {
     title: "Inception",
     domain: "Movie",
@@ -137,8 +137,8 @@ const catalogue = [
 ];
 
 const moodOptions = ["curious", "focused", "energetic", "calm", "reflective", "hopeful", "intense", "serious"];
-const domainOptions = [...new Set(catalogue.map((item) => item.domain))];
-const tagOptions = [...new Set(catalogue.flatMap((item) => item.tags))].sort();
+const domainOptions = [...new Set(fallbackCatalogue.map((item) => item.domain))];
+const tagOptions = [...new Set(fallbackCatalogue.flatMap((item) => item.tags))].sort();
 
 const state = {
   mood: "curious",
@@ -157,6 +157,9 @@ const profileSummary = document.getElementById("profileSummary");
 const itemCount = document.getElementById("itemCount");
 const domainCount = document.getElementById("domainCount");
 const modeLabel = document.getElementById("modeLabel");
+const apiStatus = document.getElementById("apiStatus");
+
+let liveCatalogue = [...fallbackCatalogue];
 
 function titleCase(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -275,7 +278,7 @@ function scoreItem(item) {
 }
 
 function getRecommendations() {
-  return catalogue
+  return liveCatalogue
     .map(scoreItem)
     .sort((left, right) => right.score - left.score)
     .slice(0, 8);
@@ -320,23 +323,79 @@ function updateSummary() {
     and using metadata cues such as <strong>${tags.slice(0, 6).join(", ") || "general relevance"}</strong>
     to rank results across formats.
   `;
-  itemCount.textContent = String(catalogue.length);
+  itemCount.textContent = String(liveCatalogue.length);
   domainCount.textContent = String(domainOptions.length);
   modeLabel.textContent = discoverySelect.options[discoverySelect.selectedIndex].textContent;
+}
+
+function setApiStatus(message, tone = "info") {
+  apiStatus.textContent = message;
+  apiStatus.classList.add("visible");
+  apiStatus.style.color = tone === "warning" ? "#8a5a13" : "var(--muted)";
+}
+
+function normalizeApiItems(items) {
+  return items
+    .filter((item) => item && item.title && item.url)
+    .map((item) => ({
+      title: item.title,
+      domain: item.domain,
+      platform: item.platform,
+      url: item.url,
+      description: item.description || "No description available.",
+      tags: Array.isArray(item.tags) && item.tags.length ? item.tags : ["general"],
+      moods: Array.isArray(item.moods) && item.moods.length ? item.moods : [state.mood]
+    }));
+}
+
+async function fetchLiveRecommendations() {
+  const params = new URLSearchParams({
+    mood: state.mood,
+    discovery: state.discovery,
+    domains: [...state.selectedDomains].join(","),
+    tags: [...state.selectedTags].join(",")
+  });
+
+  const response = await fetch(`/api/recommendations?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Request failed with ${response.status}`);
+  }
+  return response.json();
+}
+
+async function refreshCatalogue() {
+  try {
+    const payload = await fetchLiveRecommendations();
+    const normalized = normalizeApiItems(payload.items || []);
+    if (normalized.length) {
+      liveCatalogue = normalized;
+      const enabledSources = (payload.sources || []).join(", ") || "configured APIs";
+      setApiStatus(`Showing live recommendations from ${enabledSources}.`);
+      return;
+    }
+
+    liveCatalogue = [...fallbackCatalogue];
+    setApiStatus("API endpoint responded, but no live items were returned. Showing fallback catalogue.", "warning");
+  } catch (error) {
+    liveCatalogue = [...fallbackCatalogue];
+    setApiStatus("Live APIs are unavailable or not configured. Showing fallback catalogue for the demo.", "warning");
+  }
+}
+
+async function updateRecommendations() {
+  await refreshCatalogue();
+  updateSummary();
+  renderResults();
 }
 
 function surpriseMe() {
   state.mood = moodOptions[Math.floor(Math.random() * moodOptions.length)];
   state.discovery = ["balanced", "familiar", "adventurous"][Math.floor(Math.random() * 3)];
-  state.selectedDomains = new Set(
-    domainOptions.filter(() => Math.random() > 0.35)
-  );
+  state.selectedDomains = new Set(domainOptions.filter(() => Math.random() > 0.35));
   if (state.selectedDomains.size === 0) {
     state.selectedDomains.add(domainOptions[Math.floor(Math.random() * domainOptions.length)]);
   }
-  state.selectedTags = new Set(
-    tagOptions.filter(() => Math.random() > 0.78).slice(0, 6)
-  );
+  state.selectedTags = new Set(tagOptions.filter(() => Math.random() > 0.78).slice(0, 6));
   if (state.selectedTags.size === 0) {
     state.selectedTags.add(tagOptions[Math.floor(Math.random() * tagOptions.length)]);
   }
@@ -344,11 +403,12 @@ function surpriseMe() {
   moodSelect.value = state.mood;
   discoverySelect.value = state.discovery;
   renderChips();
-  updateSummary();
-  renderResults();
+  updateRecommendations();
 }
 
-document.getElementById("recommendBtn").addEventListener("click", renderResults);
+document.getElementById("recommendBtn").addEventListener("click", () => {
+  updateRecommendations();
+});
 document.getElementById("surpriseBtn").addEventListener("click", surpriseMe);
 moodSelect.addEventListener("change", (event) => {
   state.mood = event.target.value;
@@ -361,5 +421,4 @@ discoverySelect.addEventListener("change", (event) => {
 
 renderSelects();
 renderChips();
-updateSummary();
-renderResults();
+updateRecommendations();

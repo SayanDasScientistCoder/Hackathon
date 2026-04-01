@@ -458,6 +458,22 @@ select:focus-visible {
   gap: 16px;
 }
 
+.api-status {
+  display: none;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.14));
+  color: var(--muted);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.api-status.visible {
+  display: block;
+}
+
 .result-card {
   position: relative;
   overflow: hidden;
