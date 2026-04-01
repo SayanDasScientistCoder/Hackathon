@@ -18,6 +18,20 @@ STOPWORDS = {
     "about", "have", "will", "you", "our", "their", "they", "them", "more", "than", "just",
     "used", "using", "video", "videos", "channel", "channels", "podcast", "official"
 }
+INTEREST_ALIASES = {
+    "ai": {"ai", "artificial", "intelligence", "machine", "learning", "llm", "gpt", "neural"},
+    "technology": {"technology", "tech", "software", "coding", "programming", "developer"},
+    "science": {"science", "physics", "chemistry", "biology", "research"},
+    "space": {"space", "astronomy", "nasa", "cosmos", "rocket"},
+    "business": {"business", "startup", "finance", "economics", "market", "investing"},
+    "wellness": {"wellness", "health", "fitness", "sleep", "nutrition", "mindfulness"},
+    "music": {"music", "songs", "concert", "audio", "album", "guitar", "piano"},
+    "cinematic": {"film", "cinema", "cinematic", "movie", "director", "screenplay"},
+    "education": {"education", "tutorial", "explained", "course", "lesson", "learn"},
+    "analysis": {"analysis", "review", "breakdown", "essay", "commentary", "explainer"},
+    "gaming": {"gaming", "game", "esports", "playthrough"},
+    "creative": {"creative", "design", "art", "animation", "storytelling"},
+}
 
 
 def load_env_file():
@@ -57,6 +71,15 @@ def top_terms(tokens, limit=8):
         counts[token] = counts.get(token, 0) + 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [token for token, _ in ranked[:limit]]
+
+
+def map_tokens_to_interests(tokens):
+    mapped = []
+    token_set = set(tokens)
+    for interest, aliases in INTEREST_ALIASES.items():
+        if token_set & aliases:
+            mapped.append(interest)
+    return mapped
 
 
 def infer_moods_from_tags(tags, requested_mood):
@@ -126,7 +149,9 @@ def fetch_youtube_imported_profile(access_token, userinfo):
         snippet = item.get("snippet", {})
         tokens.extend(tokenize_text(snippet.get("title"), snippet.get("description")))
 
-    favorite_tags = top_terms(tokens, limit=8) or ["technology", "education", "analysis"]
+    mapped_interests = map_tokens_to_interests(tokens)
+    raw_top_terms = top_terms(tokens, limit=10)
+    favorite_tags = (mapped_interests + [term for term in raw_top_terms if term not in mapped_interests])[:8] or ["technology", "education", "analysis"]
     preferred_domains = ["Video", "Podcast", "News", "Movie"]
     token_set = set(favorite_tags)
     if {"music", "concert", "audio", "songs"} & token_set:
@@ -142,7 +167,7 @@ def fetch_youtube_imported_profile(access_token, userinfo):
 
     return {
         "label": f"{userinfo.get('name', 'Signed-in user')} • YouTube import",
-        "bio": "Imported from Google sign-in and YouTube subscriptions. Interests are inferred from subscribed channel metadata.",
+        "bio": "Imported from Google sign-in and YouTube subscriptions. Interests are inferred from subscribed channel metadata and normalized into recommendation themes.",
         "moodBias": mood_bias,
         "preferredDomains": preferred_domains,
         "favoriteTags": favorite_tags,
@@ -182,6 +207,7 @@ def fetch_youtube(tags, mood):
             "description": snippet.get("description", ""),
             "tags": sorted({tag.lower() for tag in raw_tags}),
             "moods": infer_moods_from_tags(raw_tags, mood),
+            "publishedAt": snippet.get("publishedAt"),
         })
     return items
 
@@ -238,6 +264,7 @@ def fetch_spotify(tags, mood):
             "description": f"Track by {artist_names} from Spotify search results.",
             "tags": sorted({tag.lower() for tag in raw_tags}),
             "moods": infer_moods_from_tags(raw_tags, mood),
+            "publishedAt": track.get("album", {}).get("release_date"),
         })
 
     show_params = urllib.parse.urlencode({
@@ -266,6 +293,7 @@ def fetch_spotify(tags, mood):
                 "description": show.get("description") or f"Podcast show published by {publisher}.",
                 "tags": sorted({tag.lower() for tag in raw_tags}),
                 "moods": infer_moods_from_tags(raw_tags, mood),
+                "publishedAt": None,
             })
     except Exception:
         pass
@@ -305,6 +333,7 @@ def fetch_news(tags, mood):
             "description": article.get("description") or "Live article pulled from NewsAPI.",
             "tags": sorted({tag.lower() for tag in raw_tags}),
             "moods": infer_moods_from_tags(raw_tags, mood),
+            "publishedAt": article.get("publishedAt"),
         })
     return items
 
@@ -351,6 +380,7 @@ def fetch_tmdb(tags, mood):
             "description": overview,
             "tags": sorted({tag.lower() for tag in raw_tags + genre_hint}),
             "moods": infer_moods_from_tags(raw_tags + genre_hint, mood),
+            "publishedAt": movie.get("release_date"),
         })
     return items
 

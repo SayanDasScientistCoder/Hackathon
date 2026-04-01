@@ -14,6 +14,22 @@
   --glow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 18px 40px rgba(255, 255, 255, 0.08) inset;
 }
 
+body[data-theme="dark"] {
+  --bg: #020304;
+  --panel: rgba(8, 10, 12, 0.86);
+  --panel-strong: rgba(12, 15, 18, 0.92);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --panel-edge: rgba(255, 255, 255, 0.04);
+  --text: #f5f7fa;
+  --muted: #9aa4af;
+  --accent: #ffffff;
+  --accent-dark: #cfd7de;
+  --teal: #d7e4ef;
+  --gold: #ffffff;
+  --shadow: 0 30px 80px rgba(0, 0, 0, 0.58);
+  --glow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -90,6 +106,16 @@ body::before {
   padding: 32px 0 48px;
 }
 
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.theme-toggle {
+  min-width: 168px;
+}
+
 .hero {
   display: grid;
   grid-template-columns: 1.5fr 0.9fr;
@@ -154,6 +180,107 @@ body::before {
 .hero-card {
   padding: 30px;
   background: linear-gradient(180deg, rgba(255, 252, 247, 0.2), rgba(255, 247, 240, 0.12));
+}
+
+body[data-theme="dark"] .hero-card,
+body[data-theme="dark"] .panel,
+body[data-theme="dark"] .profile-card,
+body[data-theme="dark"] .summary-card,
+body[data-theme="dark"] .result-card,
+body[data-theme="dark"] .api-status,
+body[data-theme="dark"] select,
+body[data-theme="dark"] .chip,
+body[data-theme="dark"] .ghost-btn {
+  background: linear-gradient(180deg, rgba(12, 15, 18, 0.96), rgba(7, 9, 11, 0.92));
+}
+
+body[data-theme="dark"] .stat {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    linear-gradient(180deg, rgba(6, 7, 9, 0.98), rgba(4, 5, 7, 0.98));
+}
+
+body[data-theme="dark"] {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.05), transparent 18%),
+    radial-gradient(circle at right 15%, rgba(255, 255, 255, 0.035), transparent 16%),
+    linear-gradient(180deg, #050607 0%, #020304 100%);
+}
+
+body[data-theme="dark"]::before {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+    repeating-linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.02) 0,
+      rgba(255, 255, 255, 0.02) 1px,
+      transparent 1px,
+      transparent 28px
+    );
+  opacity: 0.24;
+}
+
+body[data-theme="dark"] .bg-orb-1 {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+body[data-theme="dark"] .bg-orb-2 {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
+}
+
+body[data-theme="dark"] .bg-orb-3 {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+}
+
+body[data-theme="dark"] .hero-copy,
+body[data-theme="dark"] .hero-card,
+body[data-theme="dark"] .panel,
+body[data-theme="dark"] .result-card,
+body[data-theme="dark"] .profile-card,
+body[data-theme="dark"] .summary-card,
+body[data-theme="dark"] .api-status {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body[data-theme="dark"] .hero-copy::before,
+body[data-theme="dark"] .hero-card::before,
+body[data-theme="dark"] .panel::before,
+body[data-theme="dark"] .result-card::before,
+body[data-theme="dark"] .summary-card::before,
+body[data-theme="dark"] .stat::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015) 42%, rgba(255, 255, 255, 0.005));
+}
+
+body[data-theme="dark"] .hero-copy::after,
+body[data-theme="dark"] .hero-card::after,
+body[data-theme="dark"] .panel::after,
+body[data-theme="dark"] .result-card::after {
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.045), transparent 24%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.018), transparent 40%);
+}
+
+body[data-theme="dark"] .chip.selected,
+body[data-theme="dark"] .open-link,
+body[data-theme="dark"] .primary-btn {
+  background: linear-gradient(180deg, rgba(245, 247, 250, 0.96), rgba(222, 229, 235, 0.9));
+  color: #050607;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+body[data-theme="dark"] .domain-pill,
+body[data-theme="dark"] .mini-tag {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+  color: #f5f7fa;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body[data-theme="dark"] select:hover,
+body[data-theme="dark"] select:focus-visible,
+body[data-theme="dark"] .chip:hover,
+body[data-theme="dark"] .chip:focus-visible {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 4px rgba(255, 255, 255, 0.04);
 }
 
 .hero-card::after {

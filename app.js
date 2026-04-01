@@ -139,6 +139,19 @@ const fallbackCatalogue = [
 const moodOptions = ["curious", "focused", "energetic", "calm", "reflective", "hopeful", "intense", "serious"];
 const domainOptions = [...new Set(fallbackCatalogue.map((item) => item.domain))];
 const tagOptions = [...new Set(fallbackCatalogue.flatMap((item) => item.tags))].sort();
+const interestMap = {
+  ai: ["ai", "artificial", "intelligence", "machine", "learning", "llm", "gpt"],
+  technology: ["technology", "tech", "software", "coding", "developer"],
+  science: ["science", "research", "physics", "biology", "chemistry"],
+  space: ["space", "astronomy", "nasa", "cosmos", "rocket"],
+  business: ["business", "startup", "finance", "market", "investing", "economics"],
+  wellness: ["wellness", "health", "fitness", "sleep", "mindfulness", "nutrition"],
+  music: ["music", "song", "songs", "audio", "album", "concert"],
+  cinematic: ["cinematic", "film", "movie", "director", "screenplay", "thriller"],
+  education: ["education", "tutorial", "lesson", "learn", "course", "explainer"],
+  analysis: ["analysis", "review", "breakdown", "essay", "commentary"],
+  creative: ["creative", "design", "art", "storytelling", "animation"]
+};
 const profileLibrary = {
   builder: {
     label: "Aarav • AI builder",
@@ -188,6 +201,7 @@ const tagChips = document.getElementById("tagChips");
 const profileSignals = document.getElementById("profileSignals");
 const connectGoogleBtn = document.getElementById("connectGoogleBtn");
 const profileImportStatus = document.getElementById("profileImportStatus");
+const themeToggle = document.getElementById("themeToggle");
 const results = document.getElementById("results");
 const resultTemplate = document.getElementById("resultTemplate");
 const profileSummary = document.getElementById("profileSummary");
@@ -199,12 +213,45 @@ const apiStatus = document.getElementById("apiStatus");
 let liveCatalogue = [...fallbackCatalogue];
 let importedProfileAvailable = false;
 
+function applyTheme(theme) {
+  document.body.setAttribute("data-theme", theme);
+  themeToggle.textContent = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+  localStorage.setItem("streamsphere-theme", theme);
+}
+
 function titleCase(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function getActiveProfile() {
   return profileLibrary[state.profileId];
+}
+
+function normalizeConcepts(values) {
+  const concepts = new Set();
+  values.forEach((value) => {
+    const lowered = String(value || "").toLowerCase();
+    Object.entries(interestMap).forEach(([concept, aliases]) => {
+      if (aliases.some((alias) => lowered.includes(alias))) {
+        concepts.add(concept);
+      }
+    });
+    if (lowered && lowered.length < 24) {
+      concepts.add(lowered);
+    }
+  });
+  return [...concepts];
+}
+
+function daysSince(value) {
+  if (!value) {
+    return null;
+  }
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) {
+    return null;
+  }
+  return (Date.now() - then.getTime()) / (1000 * 60 * 60 * 24);
 }
 
 function renderSelects() {
@@ -237,7 +284,7 @@ function ensureImportedProfile(profile) {
     bio: profile.bio || "Built from the signed-in user's YouTube subscriptions and channel metadata.",
     moodBias: profile.moodBias || "curious",
     preferredDomains: profile.preferredDomains || ["Video", "Podcast", "News", "Movie"],
-    favoriteTags: profile.favoriteTags || ["technology", "education", "analysis"],
+    favoriteTags: normalizeConcepts(profile.favoriteTags || ["technology", "education", "analysis"]),
     preferredPlatforms: profile.preferredPlatforms || ["YouTube", "Spotify", "TMDB"],
     avoidedTags: profile.avoidedTags || [],
     crossDomainWeight: profile.crossDomainWeight || 1.18
@@ -250,7 +297,7 @@ function syncStateFromProfile() {
   const profile = getActiveProfile();
   state.mood = profile.moodBias;
   state.selectedDomains = new Set(profile.preferredDomains);
-  state.selectedTags = new Set(profile.favoriteTags.slice(0, 6));
+  state.selectedTags = new Set(normalizeConcepts(profile.favoriteTags).slice(0, 6));
   moodSelect.value = state.mood;
 }
 
@@ -317,16 +364,25 @@ function renderProfileSignals() {
 
 function scoreItem(item) {
   const profile = getActiveProfile();
+  const itemConcepts = normalizeConcepts([
+    ...item.tags,
+    item.title,
+    item.description,
+    item.platform,
+    item.domain
+  ]);
+  const profileConcepts = normalizeConcepts(profile.favoriteTags);
+  const activeConcepts = normalizeConcepts([...state.selectedTags]);
   let score = 10;
-  const matchedTags = item.tags.filter((tag) => state.selectedTags.has(tag));
-  const profileTagMatches = item.tags.filter((tag) => profile.favoriteTags.includes(tag));
+  const matchedTags = itemConcepts.filter((tag) => activeConcepts.includes(tag));
+  const profileTagMatches = itemConcepts.filter((tag) => profileConcepts.includes(tag));
   const moodMatch = item.moods.includes(state.mood);
   const domainMatch = state.selectedDomains.has(item.domain);
   const platformMatch = profile.preferredPlatforms.includes(item.platform);
   const profileDomainMatch = profile.preferredDomains.includes(item.domain);
   const avoidedTagHit = item.tags.some((tag) => profile.avoidedTags.includes(tag));
-  const descriptionTokens = `${item.title} ${item.description}`.toLowerCase();
-  const profileConceptMatches = profile.favoriteTags.filter((tag) => descriptionTokens.includes(tag)).length;
+  const profileConceptMatches = profileConcepts.filter((tag) => itemConcepts.includes(tag)).length;
+  const recencyDays = daysSince(item.publishedAt);
 
   if (domainMatch) {
     score += 18;
@@ -346,6 +402,14 @@ function scoreItem(item) {
 
   if (platformMatch) {
     score += 10;
+  }
+
+  if (item.domain === "News" && recencyDays !== null) {
+    score += Math.max(0, 14 - Math.min(14, recencyDays));
+  }
+
+  if (item.domain === "Movie" && recencyDays !== null && recencyDays < 365 * 3) {
+    score += 6;
   }
 
   if (avoidedTagHit) {
@@ -394,6 +458,7 @@ function scoreItem(item) {
 
   return {
     ...item,
+    concepts: itemConcepts,
     score,
     confidence,
     reason: reasonParts.join(" • ") || "broad profile match"
@@ -401,10 +466,49 @@ function scoreItem(item) {
 }
 
 function getRecommendations() {
-  return liveCatalogue
+  const scored = liveCatalogue
     .map(scoreItem)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 8);
+    .sort((left, right) => right.score - left.score);
+  const selected = [];
+  const selectedKeys = new Set();
+  const domainCounts = {};
+  const platformCounts = {};
+  const minPerDomain = 2;
+  const totalSlots = 12;
+
+  function addItem(item) {
+    const key = `${item.domain}::${item.platform}::${item.title}`;
+    if (selectedKeys.has(key)) {
+      return false;
+    }
+    const domainPenalty = (domainCounts[item.domain] || 0) * 6;
+    const platformPenalty = (platformCounts[item.platform] || 0) * 4;
+    const adjusted = item.score - domainPenalty - platformPenalty;
+    selected.push({ ...item, adjustedScore: adjusted });
+    selectedKeys.add(key);
+    domainCounts[item.domain] = (domainCounts[item.domain] || 0) + 1;
+    platformCounts[item.platform] = (platformCounts[item.platform] || 0) + 1;
+    return true;
+  }
+
+  for (const domain of domainOptions) {
+    const domainItems = scored.filter((item) => item.domain === domain).slice(0, minPerDomain);
+    domainItems.forEach(addItem);
+  }
+
+  for (const item of scored) {
+    if (selected.length >= totalSlots) {
+      break;
+    }
+    addItem(item);
+  }
+
+  return selected
+    .map((item, index) => ({
+      ...item,
+      rankLabel: `#${index + 1}`
+    }))
+    .sort((left, right) => right.adjustedScore - left.adjustedScore);
 }
 
 function renderResults() {
@@ -417,7 +521,7 @@ function renderResults() {
     node.querySelector(".platform-name").textContent = item.platform;
     node.querySelector("h3").textContent = item.title;
     node.querySelector(".description").textContent = item.description;
-    node.querySelector(".score-label").textContent = `${item.confidence}% match`;
+    node.querySelector(".score-label").textContent = item.rankLabel;
     node.querySelector(".reason").textContent = item.reason;
 
     const tagRow = node.querySelector(".tag-row");
@@ -498,7 +602,8 @@ function normalizeApiItems(items) {
       url: item.url,
       description: item.description || "No description available.",
       tags: Array.isArray(item.tags) && item.tags.length ? item.tags : ["general"],
-      moods: Array.isArray(item.moods) && item.moods.length ? item.moods : [state.mood]
+      moods: Array.isArray(item.moods) && item.moods.length ? item.moods : [state.mood],
+      publishedAt: item.publishedAt || null
     }));
 }
 
@@ -578,6 +683,10 @@ document.getElementById("surpriseBtn").addEventListener("click", surpriseMe);
 connectGoogleBtn.addEventListener("click", () => {
   window.location.href = "/auth/google/start";
 });
+themeToggle.addEventListener("click", () => {
+  const nextTheme = document.body.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  applyTheme(nextTheme);
+});
 moodSelect.addEventListener("change", (event) => {
   state.mood = event.target.value;
   updateSummary();
@@ -588,6 +697,7 @@ discoverySelect.addEventListener("change", (event) => {
 });
 
 renderSelects();
+applyTheme(localStorage.getItem("streamsphere-theme") || "light");
 syncStateFromProfile();
 renderChips();
 renderProfileSignals();
